@@ -17,9 +17,9 @@ go get github.com/camgraff/protoxy
 protoxy -p ./protos/example.proto --port 7777
 ```
 
-1. Configure Postman to send request through the Proxy server.
+2. Configure Postman to send request through the Proxy server.
 
-1. Add your fully-qualified message names as params in the Content-Type header. For example, if I have CreatePost and PostResponse messages defined in an `example` proto package
+3. Add your fully-qualified message names as params in the Content-Type header. For example, if I have CreatePost and PostResponse messages defined in an `example` proto package
 ```
 Content-Type: application/x-protobuf; reqMsg=example.CreatePost; respMsg=example.PostResponse
 ```
