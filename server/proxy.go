@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"mime"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
@@ -21,18 +22,35 @@ func New() *Server {
 	return &Server{}
 }
 
+func parseMessageTypes(r *http.Request) (srcMsg, dstMsg string, err error) {
+	ctype := r.Header.Get("Content-Type")
+	_, params, err := mime.ParseMediaType(ctype)
+	fmt.Println(params)
+	if err != nil {
+		return "", "", err
+	}
+	return params["reqmsg"], params["respmsg"], nil
+}
+
 func (s *Server) Run() {
+	var reqMsg, respMsg string
 	director := func(r *http.Request) {
 		parser := protoparse.Parser{}
-		descriptors, err := parser.ParseFiles("hello.proto")
+		descriptors, err := parser.ParseFiles("../gen/hello.proto")
 		if err != nil {
 			log.Printf("Error parsing proto file: %v", err)
 			return
 		}
 
-		msg := descriptors[0].FindMessage("hello.Hello")
+		reqMsg, respMsg, err = parseMessageTypes(r)
+		if err != nil {
+			log.Printf("Error parsing content-type: %v", err)
+			return
+		}
+
+		msg := descriptors[0].FindMessage(reqMsg)
 		if msg == nil {
-			log.Printf("Unable to find message: hello.Hello")
+			log.Printf("Unable to find message: %v", reqMsg)
 			return
 		}
 
@@ -55,15 +73,15 @@ func (s *Server) Run() {
 	modifyResp := func(r *http.Response) error {
 
 		parser := protoparse.Parser{}
-		descriptors, err := parser.ParseFiles("hello.proto")
+		descriptors, err := parser.ParseFiles("../gen/hello.proto")
 		if err != nil {
 			log.Printf("Error parsing proto file: %v", err)
 			return err
 		}
 
-		msg := descriptors[0].FindMessage("hello.Goodbye")
+		msg := descriptors[0].FindMessage(respMsg)
 		if msg == nil {
-			log.Printf("Unable to find message: hello.Goodbye")
+			log.Printf("Unable to find message: %v", respMsg)
 			return err
 		}
 
