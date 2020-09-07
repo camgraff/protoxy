@@ -4,18 +4,24 @@
 
 > A proxy server than converts JSON request bodies to protocol buffers.
 
-### 🏠 [Homepage](github.com/camgraff/protoxy)
-
 ## Install
 
 ```sh
-go get https://github.com/camgraff/protoxy
+go get github.com/camgraff/protoxy
 ```
 
 ## Usage
 
+1. Start the server by the path to your proto file and optional port.
 ```sh
 protoxy -p ./protos/example.proto --port 7777
+```
+
+1. Configure Postman to send request through the Proxy server.
+
+1. Add your fully-qualified message names as params in the Content-Type header. For example, if I have CreatePost and PostResponse messages defined in an `example` proto package
+```
+Content-Type: application/x-protobuf; reqMsg=example.CreatePost; respMsg=example.PostResponse
 ```
 
 ## Author
