@@ -1,8 +1,10 @@
 package main
 
-import "github.com/camgraff/proto-proxy/server"
+import (
+	"github.com/camgraff/protoxy/cmd"
+	//"github.com/camgraff/protoxy/server"
+)
 
 func main() {
-	srv := server.New()
-	srv.Run()
+	cmd.Execute()
 }

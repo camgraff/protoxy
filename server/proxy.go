@@ -16,10 +16,18 @@ import (
 	"github.com/jhump/protoreflect/dynamic"
 )
 
-type Server struct{}
+type Server struct {
+	ProtoPath string
+}
 
-func New() *Server {
-	return &Server{}
+type Config struct {
+	ProtoPath string
+}
+
+func New(cfg Config) *Server {
+	return &Server{
+		ProtoPath: cfg.ProtoPath,
+	}
 }
 
 func parseMessageTypes(r *http.Request) (srcMsg, dstMsg string, err error) {
@@ -36,7 +44,7 @@ func (s *Server) Run() {
 	var reqMsg, respMsg string
 	director := func(r *http.Request) {
 		parser := protoparse.Parser{}
-		descriptors, err := parser.ParseFiles("../gen/hello.proto")
+		descriptors, err := parser.ParseFiles(s.ProtoPath)
 		if err != nil {
 			log.Printf("Error parsing proto file: %v", err)
 			return
@@ -73,7 +81,7 @@ func (s *Server) Run() {
 	modifyResp := func(r *http.Response) error {
 
 		parser := protoparse.Parser{}
-		descriptors, err := parser.ParseFiles("../gen/hello.proto")
+		descriptors, err := parser.ParseFiles(s.ProtoPath)
 		if err != nil {
 			log.Printf("Error parsing proto file: %v", err)
 			return err
