@@ -14,6 +14,7 @@ var startCmd = &cobra.Command{
 func startCmdFunc(command *cobra.Command, args []string) {
 	cfg := server.Config{
 		ProtoPath: protoPath,
+		Port:      port,
 	}
 	srv := server.New(cfg)
 	srv.Run()

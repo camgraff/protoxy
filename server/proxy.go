@@ -2,7 +2,6 @@ package server
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -18,22 +17,24 @@ import (
 
 type Server struct {
 	ProtoPath string
+	Port      uint16
 }
 
 type Config struct {
 	ProtoPath string
+	Port      uint16
 }
 
 func New(cfg Config) *Server {
 	return &Server{
 		ProtoPath: cfg.ProtoPath,
+		Port:      cfg.Port,
 	}
 }
 
 func parseMessageTypes(r *http.Request) (srcMsg, dstMsg string, err error) {
 	ctype := r.Header.Get("Content-Type")
 	_, params, err := mime.ParseMediaType(ctype)
-	fmt.Println(params)
 	if err != nil {
 		return "", "", err
 	}
@@ -103,7 +104,6 @@ func (s *Server) Run() {
 		if err != nil {
 			log.Printf("Error closing body: %v", err)
 		}
-		fmt.Println(string(body))
 		err = proto.Unmarshal(body, helloMsg)
 		if err != nil {
 			log.Printf("Unable to unmarshal into json: %v", err)
@@ -113,7 +113,6 @@ func (s *Server) Run() {
 		marshaler := jsonpb.Marshaler{}
 		buf := bytes.NewBuffer(nil)
 		err = marshaler.Marshal(buf, helloMsg)
-		fmt.Println(buf)
 		if err != nil {
 			log.Printf("Failed to marshal response: %v", err)
 			return err
@@ -127,6 +126,6 @@ func (s *Server) Run() {
 	proxy := &httputil.ReverseProxy{Director: director, ModifyResponse: modifyResp}
 	http.HandleFunc("/", proxy.ServeHTTP)
 
-	log.Fatal(http.ListenAndServe(":7777", nil))
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(int(s.Port)), nil))
 
 }
