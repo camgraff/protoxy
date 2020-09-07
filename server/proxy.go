@@ -11,6 +11,7 @@ import (
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
+	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/protoparse"
 	"github.com/jhump/protoreflect/dynamic"
 )
@@ -41,35 +42,43 @@ func parseMessageTypes(r *http.Request) (srcMsg, dstMsg string, err error) {
 	return params["reqmsg"], params["respmsg"], nil
 }
 
+func fileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
+	parser := protoparse.Parser{}
+	descriptors, err := parser.ParseFiles(file)
+	if err != nil {
+		return nil, err
+	}
+	return descriptors[0], nil
+}
+
 func (s *Server) Run() {
 	var reqMsg, respMsg string
+	fd, err := fileDescriptorFromProto(s.ProtoPath)
+	if err != nil {
+		log.Printf("Error parsing protofile: %v", err)
+		return
+	}
 	director := func(r *http.Request) {
-		parser := protoparse.Parser{}
-		descriptors, err := parser.ParseFiles(s.ProtoPath)
-		if err != nil {
-			log.Printf("Error parsing proto file: %v", err)
-			return
-		}
-
 		reqMsg, respMsg, err = parseMessageTypes(r)
 		if err != nil {
 			log.Printf("Error parsing content-type: %v", err)
 			return
 		}
 
-		msg := descriptors[0].FindMessage(reqMsg)
-		if msg == nil {
+		msgDescriptor := fd.FindMessage(reqMsg)
+		if msgDescriptor == nil {
 			log.Printf("Unable to find message: %v", reqMsg)
 			return
 		}
 
-		helloMsg := dynamic.NewMessage(msg)
-		err = jsonpb.Unmarshal(r.Body, helloMsg)
+		msg := dynamic.NewMessage(msgDescriptor)
+		err = jsonpb.Unmarshal(r.Body, msg)
 		if err != nil {
 			log.Printf("Unable to unmarshal into json: %v", err)
+			return
 		}
 
-		reqBytes, err := proto.Marshal(helloMsg)
+		reqBytes, err := proto.Marshal(msg)
 		if err != nil {
 			log.Printf("Unable to marshal message: %v", err)
 			return
@@ -80,21 +89,13 @@ func (s *Server) Run() {
 	}
 
 	modifyResp := func(r *http.Response) error {
-
-		parser := protoparse.Parser{}
-		descriptors, err := parser.ParseFiles(s.ProtoPath)
-		if err != nil {
-			log.Printf("Error parsing proto file: %v", err)
-			return err
-		}
-
-		msg := descriptors[0].FindMessage(respMsg)
-		if msg == nil {
+		msgDescriptor := fd.FindMessage(respMsg)
+		if msgDescriptor == nil {
 			log.Printf("Unable to find message: %v", respMsg)
 			return err
 		}
 
-		helloMsg := dynamic.NewMessage(msg)
+		msg := dynamic.NewMessage(msgDescriptor)
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			log.Printf("Failed to read response body: %v", err)
@@ -104,7 +105,7 @@ func (s *Server) Run() {
 		if err != nil {
 			log.Printf("Error closing body: %v", err)
 		}
-		err = proto.Unmarshal(body, helloMsg)
+		err = proto.Unmarshal(body, msg)
 		if err != nil {
 			log.Printf("Unable to unmarshal into json: %v", err)
 			return err
@@ -112,7 +113,7 @@ func (s *Server) Run() {
 
 		marshaler := jsonpb.Marshaler{}
 		buf := bytes.NewBuffer(nil)
-		err = marshaler.Marshal(buf, helloMsg)
+		err = marshaler.Marshal(buf, msg)
 		if err != nil {
 			log.Printf("Failed to marshal response: %v", err)
 			return err
@@ -125,7 +126,5 @@ func (s *Server) Run() {
 
 	proxy := &httputil.ReverseProxy{Director: director, ModifyResponse: modifyResp}
 	http.HandleFunc("/", proxy.ServeHTTP)
-
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(int(s.Port)), nil))
-
 }
