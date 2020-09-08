@@ -18,6 +18,7 @@ protoxy -p ./protos/example.proto --port 7777
 ```
 
 2. Configure Postman to send request through the Proxy server.
+![Postman proxy config](https://raw.githubusercontent.com/camgraff/protoxy/master/media/postman-config.png)
 
 3. Add your fully-qualified message names as params in the Content-Type header. For example, if I have CreatePost and PostResponse messages defined in an `example` proto package:
 ```
