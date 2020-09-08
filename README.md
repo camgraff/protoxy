@@ -2,8 +2,6 @@
 ![Version](https://img.shields.io/badge/version-0.1-blue.svg?cacheSeconds=2592000)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 
-> A proxy server than converts JSON request bodies to protocol buffers.
-
 ## What is Protoxy?
 Protoxy allows you to test your REST APIs that use [Protocol Buffer](https://developers.google.com/protocol-buffers) serialization through Postman and other API testing tools which do not support Protobuf encoding. Protoxy spins up a reverse proxy server that converts the JSON in your request body to the appropriate Protobuf message type. 
 
