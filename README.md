@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 
 ## What is Protoxy?
-Protoxy allows you to test your REST APIs that use [Protocol Buffer](https://developers.google.com/protocol-buffers) serialization through Postman and other API testing tools which do not support Protobuf encoding. Protoxy spins up a reverse proxy server that converts the JSON in your request body to the appropriate Protobuf message type. 
+Protoxy allows you to test your REST APIs that use [Protocol Buffer](https://developers.google.com/protocol-buffers) serialization through Postman and other API testing tools which do not natively support Protobuf encoding. Protoxy spins up a reverse proxy server that converts the JSON in your request body to the appropriate Protobuf message type. You don't need to make any changes to your source code to use Protoxy.
 
 ## Install
 
