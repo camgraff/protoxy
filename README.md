@@ -23,6 +23,15 @@ protoxy -p ./protos/example.proto --port 7777
 ```
 Content-Type: application/x-protobuf; reqMsg=example.CreatePost; respMsg=example.PostResponse
 ```
+Protoxy also supports sending protobuf messages as a base64 encoded querystring in the URL. To do this, add an additional param in the header like so:
+```
+Content-Type: application/x-protobuf; reqMsg=example.CreatePost; respMsg=example.PostResponse; qs=proto_body
+```
+This will result in a URL like:
+```
+http://example.com?proto_body={base64 encoding of example.CreatePost}
+```
+
 
 ## Author
 
