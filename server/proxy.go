@@ -2,11 +2,13 @@ package server
 
 import (
 	"bytes"
+	"encoding/base64"
 	"io/ioutil"
 	"log"
 	"mime"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"strconv"
 
 	"github.com/golang/protobuf/jsonpb"
@@ -33,13 +35,13 @@ func New(cfg Config) *Server {
 	}
 }
 
-func parseMessageTypes(r *http.Request) (srcMsg, dstMsg string, err error) {
+func parseMessageTypes(r *http.Request) (srcMsg, dstMsg, qs string, err error) {
 	ctype := r.Header.Get("Content-Type")
 	_, params, err := mime.ParseMediaType(ctype)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return params["reqmsg"], params["respmsg"], nil
+	return params["reqmsg"], params["respmsg"], params["qs"], nil
 }
 
 func fileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
@@ -52,14 +54,14 @@ func fileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
 }
 
 func (s *Server) Run() {
-	var reqMsg, respMsg string
+	var reqMsg, respMsg, qs string
 	fd, err := fileDescriptorFromProto(s.ProtoPath)
 	if err != nil {
 		log.Printf("Error parsing protofile: %v", err)
 		return
 	}
 	director := func(r *http.Request) {
-		reqMsg, respMsg, err = parseMessageTypes(r)
+		reqMsg, respMsg, qs, err = parseMessageTypes(r)
 		if err != nil {
 			log.Printf("Error parsing content-type: %v", err)
 			return
@@ -83,9 +85,23 @@ func (s *Server) Run() {
 			log.Printf("Unable to marshal message: %v", err)
 			return
 		}
-		buffer := bytes.NewBuffer(reqBytes)
-		r.Body = ioutil.NopCloser(buffer)
-		r.ContentLength = int64(buffer.Len())
+
+		// If qs was specified, encode the proto bytes and append to url
+		if qs != "" {
+			b64bytes := base64.URLEncoding.EncodeToString(reqBytes)
+			urlstr := r.URL.String() + "?" + qs + "=" + b64bytes
+			newurl, err := url.Parse(urlstr)
+			if err != nil {
+				log.Printf("Error parsing url string: %v", urlstr)
+				return
+			}
+			r.URL = newurl
+			r.ContentLength = 0
+		} else {
+			buffer := bytes.NewBuffer(reqBytes)
+			r.Body = ioutil.NopCloser(buffer)
+			r.ContentLength = int64(buffer.Len())
+		}
 	}
 
 	modifyResp := func(r *http.Response) error {
