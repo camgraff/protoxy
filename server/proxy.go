@@ -19,8 +19,8 @@ import (
 )
 
 type Server struct {
-	ProtoPath string
-	Port      uint16
+	Proxy *httputil.ReverseProxy
+	Port  uint16
 }
 
 type Config struct {
@@ -29,36 +29,11 @@ type Config struct {
 }
 
 func New(cfg Config) *Server {
-	return &Server{
-		ProtoPath: cfg.ProtoPath,
-		Port:      cfg.Port,
-	}
-}
-
-func parseMessageTypes(r *http.Request) (srcMsg, dstMsg, qs string, err error) {
-	ctype := r.Header.Get("Content-Type")
-	_, params, err := mime.ParseMediaType(ctype)
-	if err != nil {
-		return "", "", "", err
-	}
-	return params["reqmsg"], params["respmsg"], params["qs"], nil
-}
-
-func fileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
-	parser := protoparse.Parser{}
-	descriptors, err := parser.ParseFiles(file)
-	if err != nil {
-		return nil, err
-	}
-	return descriptors[0], nil
-}
-
-func (s *Server) Run() {
 	var reqMsg, respMsg, qs string
-	fd, err := fileDescriptorFromProto(s.ProtoPath)
+	fd, err := fileDescriptorFromProto(cfg.ProtoPath)
 	if err != nil {
 		log.Printf("Error parsing protofile: %v", err)
-		return
+		return nil
 	}
 	director := func(r *http.Request) {
 		reqMsg, respMsg, qs, err = parseMessageTypes(r)
@@ -141,6 +116,32 @@ func (s *Server) Run() {
 	}
 
 	proxy := &httputil.ReverseProxy{Director: director, ModifyResponse: modifyResp}
-	http.HandleFunc("/", proxy.ServeHTTP)
+
+	return &Server{
+		Proxy: proxy,
+		Port:  cfg.Port,
+	}
+}
+
+func parseMessageTypes(r *http.Request) (srcMsg, dstMsg, qs string, err error) {
+	ctype := r.Header.Get("Content-Type")
+	_, params, err := mime.ParseMediaType(ctype)
+	if err != nil {
+		return "", "", "", err
+	}
+	return params["reqmsg"], params["respmsg"], params["qs"], nil
+}
+
+func fileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
+	parser := protoparse.Parser{}
+	descriptors, err := parser.ParseFiles(file)
+	if err != nil {
+		return nil, err
+	}
+	return descriptors[0], nil
+}
+
+func (s *Server) Run() {
+	http.HandleFunc("/", s.Proxy.ServeHTTP)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(int(s.Port)), nil))
 }
