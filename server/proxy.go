@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/base64"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"mime"
@@ -19,8 +20,9 @@ import (
 )
 
 type Server struct {
-	Proxy *httputil.ReverseProxy
-	Port  uint16
+	Proxy     *httputil.ReverseProxy
+	Port      uint16
+	ProtoPath string
 }
 
 type Config struct {
@@ -28,86 +30,45 @@ type Config struct {
 	Port      uint16
 }
 
+//TODO: Global variables are no bueno
+var reqMsg, respMsg, qs string
+var fd *desc.FileDescriptor
+
 func New(cfg Config) *Server {
-	var reqMsg, respMsg, qs string
-	fd, err := fileDescriptorFromProto(cfg.ProtoPath)
+	// Generate file descriptors from proto files
+	//TODO: this should be done before the server starts in the cmd package
+	var err error
+	fd, err = fileDescriptorFromProto(cfg.ProtoPath)
 	if err != nil {
 		log.Printf("Error parsing protofile: %v", err)
 		return nil
-	}
-	director := func(r *http.Request) {
-		reqMsg, respMsg, qs, err = parseMessageTypes(r)
-		if err != nil {
-			log.Printf("Error parsing content-type: %v", err)
-			return
-		}
-
-		msgDescriptor := fd.FindMessage(reqMsg)
-		if msgDescriptor == nil {
-			log.Printf("Unable to find message: %v", reqMsg)
-			return
-		}
-
-		msg := dynamic.NewMessage(msgDescriptor)
-		err = jsonpb.Unmarshal(r.Body, msg)
-		if err != nil {
-			log.Printf("Unable to unmarshal into json: %v", err)
-			return
-		}
-
-		reqBytes, err := proto.Marshal(msg)
-		if err != nil {
-			log.Printf("Unable to marshal message: %v", err)
-			return
-		}
-
-		// If qs was specified, encode the proto bytes and append to url
-		if qs != "" {
-			b64bytes := base64.URLEncoding.EncodeToString(reqBytes)
-			urlstr := r.URL.String() + "?" + qs + "=" + b64bytes
-			newurl, err := url.Parse(urlstr)
-			if err != nil {
-				log.Printf("Error parsing url string: %v", urlstr)
-				return
-			}
-			r.URL = newurl
-			r.ContentLength = 0
-		} else {
-			buffer := bytes.NewBuffer(reqBytes)
-			r.Body = ioutil.NopCloser(buffer)
-			r.ContentLength = int64(buffer.Len())
-		}
 	}
 
 	modifyResp := func(r *http.Response) error {
 		msgDescriptor := fd.FindMessage(respMsg)
 		if msgDescriptor == nil {
-			log.Printf("Unable to find message: %v", respMsg)
-			return err
+			return fmt.Errorf("Unable to find message: %v", respMsg)
 		}
 
 		msg := dynamic.NewMessage(msgDescriptor)
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			log.Printf("Failed to read response body: %v", err)
-			return err
+			return fmt.Errorf("Failed to read response body: %v", err)
 		}
 		err = r.Body.Close()
 		if err != nil {
-			log.Printf("Error closing body: %v", err)
+			return fmt.Errorf("Error closing body: %v", err)
 		}
 		err = proto.Unmarshal(body, msg)
 		if err != nil {
-			log.Printf("Unable to unmarshal into json: %v", err)
-			return err
+			return fmt.Errorf("Unable to unmarshal into json: %v", err)
 		}
 
 		marshaler := jsonpb.Marshaler{}
 		buf := bytes.NewBuffer(nil)
 		err = marshaler.Marshal(buf, msg)
 		if err != nil {
-			log.Printf("Failed to marshal response: %v", err)
-			return err
+			return fmt.Errorf("Failed to marshal response: %v", err)
 		}
 		r.Body = ioutil.NopCloser(buf)
 		r.ContentLength = int64(buf.Len())
@@ -115,11 +76,21 @@ func New(cfg Config) *Server {
 		return nil
 	}
 
-	proxy := &httputil.ReverseProxy{Director: director, ModifyResponse: modifyResp}
+	errorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
+	}
+
+	proxy := &httputil.ReverseProxy{
+		Director:       func(*http.Request) {},
+		ModifyResponse: modifyResp,
+		ErrorHandler:   errorHandler,
+	}
 
 	return &Server{
-		Proxy: proxy,
-		Port:  cfg.Port,
+		Proxy:     proxy,
+		Port:      cfg.Port,
+		ProtoPath: cfg.ProtoPath,
 	}
 }
 
@@ -141,7 +112,64 @@ func fileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
 	return descriptors[0], nil
 }
 
+func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
+	var err error
+	reqMsg, respMsg, qs, err = parseMessageTypes(r)
+	if err != nil {
+		errMsg := fmt.Sprintf("Error parsing content-type: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(errMsg))
+		return
+	}
+
+	msgDescriptor := fd.FindMessage(reqMsg)
+	if msgDescriptor == nil {
+		errMsg := fmt.Sprintf("Unable to find message: %v", reqMsg)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(errMsg))
+		return
+	}
+
+	msg := dynamic.NewMessage(msgDescriptor)
+	err = jsonpb.Unmarshal(r.Body, msg)
+	if err != nil {
+		errMsg := fmt.Sprintf("Unable to unmarshal into json: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(errMsg))
+		return
+	}
+
+	reqBytes, err := proto.Marshal(msg)
+	if err != nil {
+		errMsg := fmt.Sprintf("Unable to marshal message: %v", err)
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(errMsg))
+		return
+	}
+
+	// If qs was specified, encode the proto bytes and append to url
+	if qs != "" {
+		b64bytes := base64.URLEncoding.EncodeToString(reqBytes)
+		urlstr := r.URL.String() + "?" + qs + "=" + b64bytes
+		newurl, err := url.Parse(urlstr)
+		if err != nil {
+			errMsg := fmt.Sprintf("Error parsing url string: %v", urlstr)
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(errMsg))
+			return
+		}
+		r.URL = newurl
+		r.ContentLength = 0
+	} else {
+		buffer := bytes.NewBuffer(reqBytes)
+		r.Body = ioutil.NopCloser(buffer)
+		r.ContentLength = int64(buffer.Len())
+	}
+
+	s.Proxy.ServeHTTP(w, r)
+}
+
 func (s *Server) Run() {
-	http.HandleFunc("/", s.Proxy.ServeHTTP)
+	http.HandleFunc("/", s.proxyRequest)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(int(s.Port)), nil))
 }

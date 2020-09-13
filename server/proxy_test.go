@@ -38,6 +38,14 @@ func TestProxy(t *testing.T) {
 			expectedRespBody:   "",
 			expectedStatusCode: 400,
 		},
+		{
+			name:               "bad response message type",
+			protoPath:          "../internal/testprotos/hello.proto",
+			reqBody:            `{"text":"some text","number":123,"list":["this","is","a","list"]}`,
+			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.DoesntExist;`,
+			expectedRespBody:   "",
+			expectedStatusCode: 400,
+		},
 	}
 
 	for _, tc := range tt {
@@ -58,12 +66,15 @@ func TestProxy(t *testing.T) {
 			req.Header.Add("Content-Type", tc.reqHeader)
 			respRecorder := httptest.NewRecorder()
 			srv := New(Config{tc.protoPath, 7777})
-			srv.Proxy.ServeHTTP(respRecorder, req)
+			srv.proxyRequest(respRecorder, req)
 
 			assert.Equal(t, tc.expectedStatusCode, respRecorder.Code)
-			resp, err := ioutil.ReadAll(respRecorder.Body)
-			assert.NoError(t, err)
-			assert.Equal(t, tc.expectedRespBody, string(resp))
+
+			if tc.expectedStatusCode < 300 {
+				resp, err := ioutil.ReadAll(respRecorder.Body)
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedRespBody, string(resp))
+			}
 		})
 	}
 
