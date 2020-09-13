@@ -8,12 +8,17 @@ import (
 	"testing"
 
 	"github.com/camgraff/protoxy/internal/testprotos"
+	"github.com/camgraff/protoxy/protoparser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
 func TestProxy(t *testing.T) {
+	const protoPath = "../internal/testprotos/hello.proto"
+	fd, err := protoparser.FileDescriptorFromProto(protoPath)
+	require.NoError(t, err)
+
 	tt := []struct {
 		name               string
 		protoPath          string
@@ -24,26 +29,26 @@ func TestProxy(t *testing.T) {
 	}{
 		{
 			name:               "happy",
-			protoPath:          "../internal/testprotos/hello.proto",
 			reqBody:            `{"text":"some text","number":123,"list":["this","is","a","list"]}`,
 			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.Resp;`,
 			expectedRespBody:   `{"text":"This is a response"}`,
 			expectedStatusCode: 200,
 		},
 		{
+			name:               "no message types specified",
+			reqHeader:          "application/x-protobuf",
+			expectedStatusCode: 400,
+		},
+		{
 			name:               "bad request message type",
-			protoPath:          "../internal/testprotos/hello.proto",
 			reqBody:            `{"text":"some text","number":123,"list":["this","is","a","list"]}`,
 			reqHeader:          `application/x-protobuf; reqmsg=testprotos.DoesntExist; respmsg=testprotos.Resp;`,
-			expectedRespBody:   "",
 			expectedStatusCode: 400,
 		},
 		{
 			name:               "bad response message type",
-			protoPath:          "../internal/testprotos/hello.proto",
 			reqBody:            `{"text":"some text","number":123,"list":["this","is","a","list"]}`,
 			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.DoesntExist;`,
-			expectedRespBody:   "",
 			expectedStatusCode: 400,
 		},
 	}
@@ -65,7 +70,7 @@ func TestProxy(t *testing.T) {
 			req := httptest.NewRequest("GET", backend.URL, strings.NewReader(tc.reqBody))
 			req.Header.Add("Content-Type", tc.reqHeader)
 			respRecorder := httptest.NewRecorder()
-			srv := New(Config{tc.protoPath, 7777})
+			srv := New(Config{fd, 7777})
 			srv.proxyRequest(respRecorder, req)
 
 			assert.Equal(t, tc.expectedStatusCode, respRecorder.Code)

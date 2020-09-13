@@ -18,8 +18,8 @@ var protoPath string
 var port uint16
 
 var rootCmd = cobra.Command{
-	Use: "protoxy",
-	Run: startCmdFunc,
+	Use:  "protoxy",
+	RunE: startCmdFunc,
 }
 
 func Execute() {

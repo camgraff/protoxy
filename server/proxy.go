@@ -15,37 +15,26 @@ import (
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
-	"github.com/jhump/protoreflect/desc/protoparse"
 	"github.com/jhump/protoreflect/dynamic"
 )
 
 type Server struct {
-	Proxy     *httputil.ReverseProxy
-	Port      uint16
-	ProtoPath string
+	Proxy          *httputil.ReverseProxy
+	Port           uint16
+	FileDescriptor *desc.FileDescriptor
 }
 
 type Config struct {
-	ProtoPath string
-	Port      uint16
+	FileDescriptor *desc.FileDescriptor
+	Port           uint16
 }
 
 //TODO: Global variables are no bueno
 var reqMsg, respMsg, qs string
-var fd *desc.FileDescriptor
 
 func New(cfg Config) *Server {
-	// Generate file descriptors from proto files
-	//TODO: this should be done before the server starts in the cmd package
-	var err error
-	fd, err = fileDescriptorFromProto(cfg.ProtoPath)
-	if err != nil {
-		log.Printf("Error parsing protofile: %v", err)
-		return nil
-	}
-
 	modifyResp := func(r *http.Response) error {
-		msgDescriptor := fd.FindMessage(respMsg)
+		msgDescriptor := cfg.FileDescriptor.FindMessage(respMsg)
 		if msgDescriptor == nil {
 			return fmt.Errorf("Unable to find message: %v", respMsg)
 		}
@@ -88,9 +77,9 @@ func New(cfg Config) *Server {
 	}
 
 	return &Server{
-		Proxy:     proxy,
-		Port:      cfg.Port,
-		ProtoPath: cfg.ProtoPath,
+		Proxy:          proxy,
+		Port:           cfg.Port,
+		FileDescriptor: cfg.FileDescriptor,
 	}
 }
 
@@ -103,15 +92,6 @@ func parseMessageTypes(r *http.Request) (srcMsg, dstMsg, qs string, err error) {
 	return params["reqmsg"], params["respmsg"], params["qs"], nil
 }
 
-func fileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
-	parser := protoparse.Parser{}
-	descriptors, err := parser.ParseFiles(file)
-	if err != nil {
-		return nil, err
-	}
-	return descriptors[0], nil
-}
-
 func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 	var err error
 	reqMsg, respMsg, qs, err = parseMessageTypes(r)
@@ -122,7 +102,7 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgDescriptor := fd.FindMessage(reqMsg)
+	msgDescriptor := s.FileDescriptor.FindMessage(reqMsg)
 	if msgDescriptor == nil {
 		errMsg := fmt.Sprintf("Unable to find message: %v", reqMsg)
 		w.WriteHeader(http.StatusBadRequest)
