@@ -1,9 +1,11 @@
 package server
 
 import (
+	"encoding/base64"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -26,6 +28,7 @@ func TestProxy(t *testing.T) {
 		reqHeader          string
 		expectedRespBody   string
 		expectedStatusCode int
+		hasQuerysting      bool
 	}{
 		{
 			name:               "happy",
@@ -33,6 +36,14 @@ func TestProxy(t *testing.T) {
 			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.Resp;`,
 			expectedRespBody:   `{"text":"This is a response"}`,
 			expectedStatusCode: 200,
+		},
+		{
+			name:               "happy with querystring",
+			reqBody:            `{"text":"some text","number":123,"list":["this","is","a","list"]}`,
+			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.Resp; qs=proto_body`,
+			expectedRespBody:   `{"text":"This is a response"}`,
+			expectedStatusCode: 200,
+			hasQuerysting:      true,
 		},
 		{
 			name:               "no message types specified",
@@ -51,6 +62,17 @@ func TestProxy(t *testing.T) {
 			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.DoesntExist;`,
 			expectedStatusCode: 400,
 		},
+		{
+			name:               "bad content type header",
+			reqHeader:          "invalid",
+			expectedStatusCode: 400,
+		},
+		{
+			name:               "bad request body",
+			reqBody:            `{"bad key":"bad value"}`,
+			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.Resp;`,
+			expectedStatusCode: 400,
+		},
 	}
 
 	for _, tc := range tt {
@@ -58,14 +80,25 @@ func TestProxy(t *testing.T) {
 			// Backend expects a request of prototests.Req and will respond with prototest.Resp
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				pb := &testprotos.Req{}
-				body, err := ioutil.ReadAll(r.Body)
-				require.NoError(t, err)
-				proto.Unmarshal(body, pb)
+				if tc.hasQuerysting {
+					params, err := url.ParseQuery(r.URL.RawQuery)
+					require.NoError(t, err)
+					protoBytes, err := base64.URLEncoding.DecodeString(params["proto_body"][0])
+					require.NoError(t, err)
+					err = proto.Unmarshal(protoBytes, pb)
+					require.NoError(t, err)
+				} else {
+					body, err := ioutil.ReadAll(r.Body)
+					require.NoError(t, err)
+					err = proto.Unmarshal(body, pb)
+					require.NoError(t, err)
+				}
 				respPB := &testprotos.Resp{Text: "This is a response"}
 				resp, err := proto.Marshal(respPB)
 				require.NoError(t, err)
 				w.Write(resp)
 			}))
+			defer backend.Close()
 
 			req := httptest.NewRequest("GET", backend.URL, strings.NewReader(tc.reqBody))
 			req.Header.Add("Content-Type", tc.reqHeader)
