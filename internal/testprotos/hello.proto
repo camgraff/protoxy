@@ -1,0 +1,13 @@
+syntax = "proto3";
+package testprotos;
+option go_package = "github.com/camgraff/protoxy/internal/testprotos";
+
+message Req {
+    string text = 1;
+    int32 number = 2;
+    repeated string list = 3;
+}
+
+message Resp {
+    string text = 1;
+}
