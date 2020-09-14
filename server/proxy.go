@@ -19,7 +19,6 @@ import (
 )
 
 type Server struct {
-	Proxy          *httputil.ReverseProxy
 	Port           uint16
 	FileDescriptor *desc.FileDescriptor
 }
@@ -29,12 +28,85 @@ type Config struct {
 	Port           uint16
 }
 
-//TODO: Global variables are no bueno
-var reqMsg, respMsg, qs string
-
 func New(cfg Config) *Server {
+	return &Server{
+		Port:           cfg.Port,
+		FileDescriptor: cfg.FileDescriptor,
+	}
+}
+
+func parseMessageTypes(r *http.Request) (srcMsg, dstMsg, qs string, err error) {
+	ctype := r.Header.Get("Content-Type")
+	_, params, err := mime.ParseMediaType(ctype)
+	if err != nil {
+		return "", "", "", err
+	}
+	return params["reqmsg"], params["respmsg"], params["qs"], nil
+}
+
+func writeErrorResponse(w http.ResponseWriter, status int, err error) {
+	w.WriteHeader(status)
+	w.Write([]byte(err.Error()))
+}
+
+func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor) error {
+	msg := dynamic.NewMessage(msgDescriptor)
+	err := jsonpb.Unmarshal(r.Body, msg)
+	if err != nil {
+		return fmt.Errorf("Unable to unmarshal into json: %v", err)
+	}
+
+	reqBytes, err := proto.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("Unable to marshal message: %v", err)
+	}
+
+	_, _, qs, err := parseMessageTypes(r)
+	if err != nil {
+		return fmt.Errorf("Error parsing content-type: %w", err)
+	}
+
+	// If qs was specified, encode the proto bytes and append to url
+	if qs != "" {
+		b64bytes := base64.URLEncoding.EncodeToString(reqBytes)
+		urlstr := r.URL.String() + "?" + qs + "=" + b64bytes
+		newurl, err := url.Parse(urlstr)
+		if err != nil {
+			return fmt.Errorf("Error parsing url string: %v", err)
+		}
+		r.URL = newurl
+		r.ContentLength = 0
+		return nil
+	}
+
+	buffer := bytes.NewBuffer(reqBytes)
+	r.Body = ioutil.NopCloser(buffer)
+	r.ContentLength = int64(buffer.Len())
+
+	return nil
+}
+
+func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
+	reqMsg, respMsg, _, err := parseMessageTypes(r)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error parsing content-type: %w", err))
+		return
+	}
+
+	msgDescriptor := s.FileDescriptor.FindMessage(reqMsg)
+	if msgDescriptor == nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Unable to find message: %v", err))
+		return
+	}
+
+	err = jsonBodyToProto(r, msgDescriptor)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error converting JSON body to Protobuf: %w", err))
+		return
+	}
+
 	modifyResp := func(r *http.Response) error {
-		msgDescriptor := cfg.FileDescriptor.FindMessage(respMsg)
+		msgDescriptor := s.FileDescriptor.FindMessage(respMsg)
 		if msgDescriptor == nil {
 			return fmt.Errorf("Unable to find message: %v", respMsg)
 		}
@@ -76,77 +148,7 @@ func New(cfg Config) *Server {
 		ErrorHandler:   errorHandler,
 	}
 
-	return &Server{
-		Proxy:          proxy,
-		Port:           cfg.Port,
-		FileDescriptor: cfg.FileDescriptor,
-	}
-}
-
-func parseMessageTypes(r *http.Request) (srcMsg, dstMsg, qs string, err error) {
-	ctype := r.Header.Get("Content-Type")
-	_, params, err := mime.ParseMediaType(ctype)
-	if err != nil {
-		return "", "", "", err
-	}
-	return params["reqmsg"], params["respmsg"], params["qs"], nil
-}
-
-func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
-	var err error
-	reqMsg, respMsg, qs, err = parseMessageTypes(r)
-	if err != nil {
-		errMsg := fmt.Sprintf("Error parsing content-type: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(errMsg))
-		return
-	}
-
-	msgDescriptor := s.FileDescriptor.FindMessage(reqMsg)
-	if msgDescriptor == nil {
-		errMsg := fmt.Sprintf("Unable to find message: %v", reqMsg)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(errMsg))
-		return
-	}
-
-	msg := dynamic.NewMessage(msgDescriptor)
-	err = jsonpb.Unmarshal(r.Body, msg)
-	if err != nil {
-		errMsg := fmt.Sprintf("Unable to unmarshal into json: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(errMsg))
-		return
-	}
-
-	reqBytes, err := proto.Marshal(msg)
-	if err != nil {
-		errMsg := fmt.Sprintf("Unable to marshal message: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(errMsg))
-		return
-	}
-
-	// If qs was specified, encode the proto bytes and append to url
-	if qs != "" {
-		b64bytes := base64.URLEncoding.EncodeToString(reqBytes)
-		urlstr := r.URL.String() + "?" + qs + "=" + b64bytes
-		newurl, err := url.Parse(urlstr)
-		if err != nil {
-			errMsg := fmt.Sprintf("Error parsing url string: %v", urlstr)
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(errMsg))
-			return
-		}
-		r.URL = newurl
-		r.ContentLength = 0
-	} else {
-		buffer := bytes.NewBuffer(reqBytes)
-		r.Body = ioutil.NopCloser(buffer)
-		r.ContentLength = int64(buffer.Len())
-	}
-
-	s.Proxy.ServeHTTP(w, r)
+	proxy.ServeHTTP(w, r)
 }
 
 func (s *Server) Run() {
