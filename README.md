@@ -13,9 +13,9 @@ go get github.com/camgraff/protoxy
 
 ## Usage
 
-1. Start the server by specifying the path to your proto file and optional port.
+1. Start the server by specifying your import paths, proto file names, and optional port
 ```sh
-protoxy -p ./protos/example.proto --port 7777
+protoxy -I ./protos/ -p example.proto --port 7777
 ```
 
 2. Configure Postman to send requests through the Proxy server.
