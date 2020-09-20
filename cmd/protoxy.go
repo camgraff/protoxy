@@ -8,7 +8,7 @@ import (
 )
 
 func init() {
-	rootCmd.PersistentFlags().StringSliceVarP(&importPaths, "import-paths", "I", nil, "paths to search for imports declared in your proto files")
+	rootCmd.PersistentFlags().StringSliceVarP(&importPaths, "import-paths", "I", nil, "paths to search for imports declared in your proto files. Defaults to current directory.")
 	// TODO: Consider moving these into functions args instead of flags
 	rootCmd.PersistentFlags().StringSliceVarP(&protoFiles, "proto", "p", nil, "path to the .proto files which contains your message definitions")
 	rootCmd.MarkPersistentFlagRequired("proto")
