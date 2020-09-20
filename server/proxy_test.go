@@ -17,8 +17,9 @@ import (
 )
 
 func TestProxy(t *testing.T) {
-	const protoPath = "../internal/testprotos/hello.proto"
-	fd, err := protoparser.FileDescriptorFromProto(protoPath)
+	const importPath = "../internal/testprotos/"
+	const protoFile = "hello.proto"
+	fds, err := protoparser.FileDescriptorsFromPaths([]string{importPath}, []string{protoFile})
 	require.NoError(t, err)
 
 	tt := []struct {
@@ -103,7 +104,7 @@ func TestProxy(t *testing.T) {
 			req := httptest.NewRequest("GET", backend.URL, strings.NewReader(tc.reqBody))
 			req.Header.Add("Content-Type", tc.reqHeader)
 			respRecorder := httptest.NewRecorder()
-			srv := New(Config{fd, 7777})
+			srv := New(Config{fds, 7777})
 			srv.proxyRequest(respRecorder, req)
 
 			assert.Equal(t, tc.expectedStatusCode, respRecorder.Code)
