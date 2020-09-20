@@ -1,0 +1,9 @@
+syntax = "proto3";
+package moreprotos;
+option go_package = "github.com/camgraff/protoxy/internal/moreprotos";
+import "hello.proto";
+
+message Req {
+    testprotos.Req subReq = 1;
+    int32 num = 2;
+}
