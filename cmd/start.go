@@ -15,13 +15,13 @@ var startCmd = &cobra.Command{
 }
 
 func startCmdFunc(command *cobra.Command, args []string) error {
-	fd, err := protoparser.FileDescriptorFromProto(protoPath)
+	fd, err := protoparser.FileDescriptorsFromPaths(importPaths, protoFiles)
 	if err != nil {
 		return fmt.Errorf("Invalid proto path: %w", err)
 	}
 	cfg := server.Config{
-		FileDescriptor: fd,
-		Port:           port,
+		FileDescriptors: fd,
+		Port:            port,
 	}
 	srv := server.New(cfg)
 	srv.Run()
