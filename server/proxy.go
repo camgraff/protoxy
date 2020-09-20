@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -19,19 +20,19 @@ import (
 )
 
 type Server struct {
-	Port           uint16
-	FileDescriptor *desc.FileDescriptor
+	Port            uint16
+	FileDescriptors []*desc.FileDescriptor
 }
 
 type Config struct {
-	FileDescriptor *desc.FileDescriptor
-	Port           uint16
+	FileDescriptors []*desc.FileDescriptor
+	Port            uint16
 }
 
 func New(cfg Config) *Server {
 	return &Server{
-		Port:           cfg.Port,
-		FileDescriptor: cfg.FileDescriptor,
+		Port:            cfg.Port,
+		FileDescriptors: cfg.FileDescriptors,
 	}
 }
 
@@ -86,6 +87,29 @@ func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor) err
 	return nil
 }
 
+func (s *Server) findMessageDescriptors(reqMsg, respMsg string) (reqMsgDesc, respMsgDesc *desc.MessageDescriptor, err error) {
+	for _, fd := range s.FileDescriptors {
+		if reqMsgDesc == nil {
+			reqMsgDesc = fd.FindMessage(reqMsg)
+		}
+		if respMsgDesc == nil {
+			respMsgDesc = fd.FindMessage(respMsg)
+		}
+	}
+
+	var errMsg string
+	if reqMsgDesc == nil {
+		errMsg += fmt.Sprintf("Failed to find message descriptor for '%v'. ", reqMsg)
+	}
+	if respMsgDesc == nil {
+		errMsg += fmt.Sprintf("Failed to find message descriptor for '%v'.", respMsg)
+	}
+	if errMsg != "" {
+		return nil, nil, errors.New(errMsg)
+	}
+	return reqMsgDesc, respMsgDesc, nil
+}
+
 func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 	reqMsg, respMsg, _, err := parseMessageTypes(r)
 	if err != nil {
@@ -93,25 +117,20 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msgDescriptor := s.FileDescriptor.FindMessage(reqMsg)
-	if msgDescriptor == nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Unable to find message: %v", err))
+	reqMsgDesc, respMsgDesc, err := s.findMessageDescriptors(reqMsg, respMsg)
+	if err != nil {
+		writeErrorResponse(w, http.StatusBadRequest, err)
 		return
 	}
 
-	err = jsonBodyToProto(r, msgDescriptor)
+	err = jsonBodyToProto(r, reqMsgDesc)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error converting JSON body to Protobuf: %w", err))
 		return
 	}
 
 	modifyResp := func(r *http.Response) error {
-		msgDescriptor := s.FileDescriptor.FindMessage(respMsg)
-		if msgDescriptor == nil {
-			return fmt.Errorf("Unable to find message: %v", respMsg)
-		}
-
-		msg := dynamic.NewMessage(msgDescriptor)
+		msg := dynamic.NewMessage(respMsgDesc)
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			return fmt.Errorf("Failed to read response body: %v", err)

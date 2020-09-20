@@ -5,11 +5,13 @@ import (
 	"github.com/jhump/protoreflect/desc/protoparse"
 )
 
-func FileDescriptorFromProto(file string) (*desc.FileDescriptor, error) {
-	parser := protoparse.Parser{}
-	descriptors, err := parser.ParseFiles(file)
+func FileDescriptorsFromPaths(importPaths []string, protoFiles []string) ([]*desc.FileDescriptor, error) {
+	parser := protoparse.Parser{
+		ImportPaths: importPaths,
+	}
+	descriptors, err := parser.ParseFiles(protoFiles...)
 	if err != nil {
 		return nil, err
 	}
-	return descriptors[0], nil
+	return descriptors, nil
 }
