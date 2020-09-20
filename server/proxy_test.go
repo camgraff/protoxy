@@ -17,53 +17,41 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestProxy(t *testing.T) {
-	// testProtoBackend expects a request of testprotos.Req and will respond with testprotos.Resp
-	testProtoBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pb := &testprotos.Req{}
-		body, err := ioutil.ReadAll(r.Body)
-		require.NoError(t, err)
-		err = proto.Unmarshal(body, pb)
-		require.NoError(t, err)
+func newBackend(t *testing.T, req proto.Message, resp proto.Message, querystring bool) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body []byte
+		var err error
+		if querystring {
+			params, err := url.ParseQuery(r.URL.RawQuery)
+			require.NoError(t, err)
+			body, err = base64.URLEncoding.DecodeString(params["proto_body"][0])
+			require.NoError(t, err)
 
-		respPB := &testprotos.Resp{Text: "This is a response"}
-		resp, err := proto.Marshal(respPB)
+		} else {
+			body, err = ioutil.ReadAll(r.Body)
+			require.NoError(t, err)
+		}
+		err = proto.Unmarshal(body, req)
+		require.NoError(t, err)
+		resp, err := proto.Marshal(resp)
 		require.NoError(t, err)
 		w.Write(resp)
 	}))
+}
+
+func TestProxy(t *testing.T) {
+	resp := &testprotos.Resp{Text: "This is a response"}
+	// testProtoBackend expects a request of testprotos.Req and will respond with testprotos.Resp
+	testProtoBackend := newBackend(t, &testprotos.Req{}, resp, false)
 	defer testProtoBackend.Close()
 
 	// qsBackend is like testProtoBackend except it reads proto messages from the querystring
-	qsBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pb := &testprotos.Req{}
-		params, err := url.ParseQuery(r.URL.RawQuery)
-		require.NoError(t, err)
-		protoBytes, err := base64.URLEncoding.DecodeString(params["proto_body"][0])
-		require.NoError(t, err)
-		err = proto.Unmarshal(protoBytes, pb)
-		require.NoError(t, err)
-
-		respPB := &testprotos.Resp{Text: "This is a response"}
-		resp, err := proto.Marshal(respPB)
-		require.NoError(t, err)
-		w.Write(resp)
-	}))
+	qsBackend := newBackend(t, &testprotos.Req{}, resp, true)
 	defer qsBackend.Close()
 
 	// moreProtosBackend accepts a moreprotos.Req and returns a testprotos.Resp
-	moreProtosBackend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pb := &moreprotos.Req{}
-		body, err := ioutil.ReadAll(r.Body)
-		require.NoError(t, err)
-		err = proto.Unmarshal(body, pb)
-		require.NoError(t, err)
-
-		respPB := &testprotos.Resp{Text: "This is a response"}
-		resp, err := proto.Marshal(respPB)
-		require.NoError(t, err)
-		w.Write(resp)
-	}))
-	defer qsBackend.Close()
+	moreProtosBackend := newBackend(t, &moreprotos.Req{}, resp, false)
+	defer moreProtosBackend.Close()
 
 	tt := []struct {
 		name               string
