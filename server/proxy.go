@@ -153,6 +153,7 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 		r.Body = ioutil.NopCloser(buf)
 		r.ContentLength = int64(buf.Len())
 		r.Header.Set("Content-Length", strconv.Itoa(buf.Len()))
+		r.Header.Set("Content-Type", "application/json")
 		return nil
 	}
 
