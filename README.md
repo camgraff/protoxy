@@ -1,5 +1,4 @@
 # Welcome to Protoxy 👋
-![Version](https://img.shields.io/badge/version-0.1-blue.svg?cacheSeconds=2592000)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 
 ## What is Protoxy?
@@ -12,8 +11,24 @@ go get github.com/camgraff/protoxy
 ```
 
 ## Usage
+Let's say my proto file is located at ./protos/example.proto and looks like this:
+```
+syntax = "proto3";
+package example;
 
-1. Start the server by specifying your import paths, proto file names, and optional port
+message ExampleRequest {
+    string text = 1;
+    int32 number = 2;
+    repeated string list = 3;
+}
+
+message ExampleResponse {
+    string text = 1;
+}
+
+```
+
+1. Start the server by specifying your import paths, proto file names, and optional port.
 ```sh
 protoxy -I ./protos/ -p example.proto --port 7777
 ```
@@ -21,18 +36,44 @@ protoxy -I ./protos/ -p example.proto --port 7777
 2. Configure Postman to send requests through the Proxy server.
 ![Postman proxy config](https://raw.githubusercontent.com/camgraff/protoxy/master/media/postman-config.png)
 
-3. Add your fully-qualified message names as params in the Content-Type header. For example, if I have CreatePost and PostResponse messages defined in an `example` proto package:
+3. Add your fully-qualified message names as params in the Content-Type header.
 ```
-Content-Type: application/x-protobuf; reqMsg=example.CreatePost; respMsg=example.PostResponse
+Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="example.ExampleResponse";
 ```
-Protoxy also supports sending protobuf messages as a base64 encoded querystring in the URL. To do this, add an additional param in the header like so:
+
+4. Send your request as a raw JSON body.
 ```
-Content-Type: application/x-protobuf; reqMsg=example.CreatePost; respMsg=example.PostResponse; qs=proto_body
+{
+  "text": "some text",
+  "number": 123,
+  "list": ["this", "is", "a", "list"]
+}
+```
+
+The response is:
+```
+{
+  "text": "this response was automagically converted to JSON"
+}
+```
+
+### Using Protobuf in Query String
+
+Protoxy also supports sending protobuf messages as a base64 encoded query string in the URL. To do this, add an additional param `qs` in the header whose value corresponds to the query string parameter. For example:
+```
+Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="example.ExampleResponse"; qs="proto_body";
 ```
 This will result in a URL like:
 ```
-http://example.com?proto_body={base64 encoding of example.CreatePost}
+http://example.com?proto_body={base64 encoding of example.ExampleRequest}
 ```
+
+### Handling Multiple Response Message Types
+If your API sends multiple response message types, you the `respMsg` parameter accepts a comma-seperated list of values.
+```
+Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="example.ExampleResponse,example.DifferentResponse";
+```
+Note: Protoxy will attempt to unmarshal your proto messages into each type of response and will send the first successful one. This can produce unexpected results because the same wire-format message can successfully be unmarshalled into multiple proto message types depending on the fields in the proto message.
 
 
 ## Author
