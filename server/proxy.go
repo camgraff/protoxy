@@ -12,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
@@ -36,13 +37,15 @@ func New(cfg Config) *Server {
 	}
 }
 
-func parseMessageTypes(r *http.Request) (srcMsg, dstMsg, qs string, err error) {
+func parseMessageTypes(r *http.Request) (srcMsg string, dstMsgs []string, qs string, err error) {
 	ctype := r.Header.Get("Content-Type")
 	_, params, err := mime.ParseMediaType(ctype)
 	if err != nil {
-		return "", "", "", err
+		return "", nil, "", err
 	}
-	return params["reqmsg"], params["respmsg"], params["qs"], nil
+	// respmsg can contain multiple response types
+	dstMsgs = strings.Split(params["respmsg"], ",")
+	return params["reqmsg"], dstMsgs, params["qs"], nil
 }
 
 func writeErrorResponse(w http.ResponseWriter, status int, err error) {
@@ -87,13 +90,16 @@ func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor) err
 	return nil
 }
 
-func (s *Server) findMessageDescriptors(reqMsg, respMsg string) (reqMsgDesc, respMsgDesc *desc.MessageDescriptor, err error) {
+func (s *Server) findMessageDescriptors(reqMsg string, respMsgs []string) (reqMsgDesc *desc.MessageDescriptor, respMsgDescs []*desc.MessageDescriptor, err error) {
 	for _, fd := range s.FileDescriptors {
 		if reqMsgDesc == nil {
 			reqMsgDesc = fd.FindMessage(reqMsg)
 		}
-		if respMsgDesc == nil {
-			respMsgDesc = fd.FindMessage(respMsg)
+		for _, r := range respMsgs {
+			possibleDesc := fd.FindMessage(r)
+			if possibleDesc != nil {
+				respMsgDescs = append(respMsgDescs, possibleDesc)
+			}
 		}
 	}
 
@@ -101,23 +107,23 @@ func (s *Server) findMessageDescriptors(reqMsg, respMsg string) (reqMsgDesc, res
 	if reqMsgDesc == nil {
 		errMsg += fmt.Sprintf("Failed to find message descriptor for '%v'. ", reqMsg)
 	}
-	if respMsgDesc == nil {
-		errMsg += fmt.Sprintf("Failed to find message descriptor for '%v'.", respMsg)
+	if len(respMsgDescs) == 0 {
+		errMsg += fmt.Sprintf("Failed to find any message descriptors for '%v'.", respMsgs)
 	}
 	if errMsg != "" {
 		return nil, nil, errors.New(errMsg)
 	}
-	return reqMsgDesc, respMsgDesc, nil
+	return reqMsgDesc, respMsgDescs, nil
 }
 
 func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
-	reqMsg, respMsg, _, err := parseMessageTypes(r)
+	reqMsg, respMsgs, _, err := parseMessageTypes(r)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error parsing content-type: %w", err))
 		return
 	}
 
-	reqMsgDesc, respMsgDesc, err := s.findMessageDescriptors(reqMsg, respMsg)
+	reqMsgDesc, respMsgDescs, err := s.findMessageDescriptors(reqMsg, respMsgs)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, err)
 		return
@@ -130,7 +136,6 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	modifyResp := func(r *http.Response) error {
-		msg := dynamic.NewMessage(respMsgDesc)
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
 			return fmt.Errorf("Failed to read response body: %v", err)
@@ -139,9 +144,21 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return fmt.Errorf("Error closing body: %v", err)
 		}
-		err = proto.Unmarshal(body, msg)
-		if err != nil {
-			return fmt.Errorf("Unable to unmarshal into json: %v", err)
+		// Try all possible responses until something works
+		var errs error
+		var msg proto.Message
+		for _, d := range respMsgDescs {
+			msg = dynamic.NewMessage(d)
+			err = proto.Unmarshal(body, msg)
+			if err != nil {
+				errs = fmt.Errorf("Unable to unmarshal into json: %v", err)
+			} else {
+				errs = nil
+				break
+			}
+		}
+		if errs != nil {
+			return errs
 		}
 
 		marshaler := jsonpb.Marshaler{}
