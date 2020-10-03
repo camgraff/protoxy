@@ -39,6 +39,28 @@ func newBackend(t *testing.T, req proto.Message, resp proto.Message, querystring
 	}))
 }
 
+func newMultRespBackend(t *testing.T, resp1 proto.Message, resp2 proto.Message) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body []byte
+		var err error
+		body, err = ioutil.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		var req testprotos.Req
+		err = proto.Unmarshal(body, &req)
+		require.NoError(t, err)
+
+		var resp []byte
+		if req.Text == "want resp2" {
+			resp, err = proto.Marshal(resp2)
+		} else {
+			resp, err = proto.Marshal(resp1)
+		}
+		require.NoError(t, err)
+		w.Write(resp)
+	}))
+}
+
 func TestProxy(t *testing.T) {
 	resp := &testprotos.Resp{Text: "This is a response"}
 	// testProtoBackend expects a request of testprotos.Req and will respond with testprotos.Resp
@@ -53,6 +75,11 @@ func TestProxy(t *testing.T) {
 	moreProtosBackend := newBackend(t, &moreprotos.Req{}, resp, false)
 	defer moreProtosBackend.Close()
 
+	resp2 := &testprotos.Resp2{Number: 44}
+	// multRespBackend sends a different response type depending on the input
+	multRespBackend := newMultRespBackend(t, resp, resp2)
+	defer multRespBackend.Close()
+
 	tt := []struct {
 		name               string
 		importPaths        []string
@@ -63,6 +90,26 @@ func TestProxy(t *testing.T) {
 		expectedRespBody   string
 		expectedStatusCode int
 	}{
+		{
+			name:               "multiple response types 1",
+			importPaths:        []string{"../internal/testprotos"},
+			protoFiles:         []string{"hello.proto"},
+			backend:            multRespBackend,
+			reqBody:            `{"text":"want resp1","number":123,"list":["this","is","a","list"]}`,
+			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg="testprotos.Resp,testprotos.Resp2";`,
+			expectedRespBody:   `{"text":"This is a response"}`,
+			expectedStatusCode: http.StatusOK,
+		},
+		{
+			name:               "multiple response types 2",
+			importPaths:        []string{"../internal/testprotos"},
+			protoFiles:         []string{"hello.proto"},
+			backend:            multRespBackend,
+			reqBody:            `{"text":"want resp2","number":123,"list":["this","is","a","list"]}`,
+			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg="testprotos.Resp,testprotos.Resp2";`,
+			expectedRespBody:   `{"number":44}`,
+			expectedStatusCode: http.StatusOK,
+		},
 		{
 			name:               "happy",
 			importPaths:        []string{"../internal/testprotos"},
@@ -126,7 +173,6 @@ func TestProxy(t *testing.T) {
 			expectedStatusCode: http.StatusBadRequest,
 			backend:            testProtoBackend,
 		},
-
 		{
 			name:        "multiple import paths",
 			importPaths: []string{"../internal/testprotos", "../internal/moreprotos"},
