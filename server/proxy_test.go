@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/base64"
 	"io/ioutil"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 
 func newBackend(t *testing.T, req proto.Message, resp proto.Message, querystring bool) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertHeaderParamsHaveBeenStripped(t, r)
 		var body []byte
 		var err error
 		if querystring {
@@ -41,6 +43,7 @@ func newBackend(t *testing.T, req proto.Message, resp proto.Message, querystring
 
 func newMultRespBackend(t *testing.T, resp1 proto.Message, resp2 proto.Message) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assertHeaderParamsHaveBeenStripped(t, r)
 		var body []byte
 		var err error
 		body, err = ioutil.ReadAll(r.Body)
@@ -59,6 +62,18 @@ func newMultRespBackend(t *testing.T, resp1 proto.Message, resp2 proto.Message) 
 		require.NoError(t, err)
 		w.Write(resp)
 	}))
+}
+
+func assertHeaderParamsHaveBeenStripped(t *testing.T, r *http.Request) {
+	_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	require.NoError(t, err)
+
+	_, ok := params["reqmsg"]
+	assert.False(t, ok)
+	_, ok = params["respmsg"]
+	assert.False(t, ok)
+	_, ok = params["qs"]
+	assert.False(t, ok)
 }
 
 func TestProxy(t *testing.T) {
