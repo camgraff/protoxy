@@ -135,6 +135,9 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Override content-type to remove params
+	r.Header.Set("Content-Type", "application/x-protobuf")
+
 	modifyResp := func(r *http.Response) error {
 		body, err := ioutil.ReadAll(r.Body)
 		if err != nil {
