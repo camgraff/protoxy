@@ -26,6 +26,7 @@ to Protocol Buffers. See github.com/camgraff/protoxy for documentation`,
 	RunE: startCmdFunc,
 }
 
+// Execute executes the root command.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)

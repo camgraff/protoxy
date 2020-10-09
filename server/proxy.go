@@ -20,16 +20,19 @@ import (
 	"github.com/jhump/protoreflect/dynamic"
 )
 
+// Server is the base type for our proxy.
 type Server struct {
 	Port            uint16
 	FileDescriptors []*desc.FileDescriptor
 }
 
+// Config holds the configuration for our server.
 type Config struct {
 	FileDescriptors []*desc.FileDescriptor
 	Port            uint16
 }
 
+// New returns a new proxy server instance
 func New(cfg Config) *Server {
 	return &Server{
 		Port:            cfg.Port,
@@ -191,6 +194,7 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 	proxy.ServeHTTP(w, r)
 }
 
+// Run starts the proxy server.
 func (s *Server) Run() {
 	http.HandleFunc("/", s.proxyRequest)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(int(s.Port)), nil))
