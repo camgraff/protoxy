@@ -11,7 +11,7 @@ go get github.com/camgraff/protoxy
 ```
 
 ## Usage
-Let's say my proto file is located at ./protos/example.proto and looks like this:
+Consider a proto file located at `./protos/example.proto` that looks like this:
 ```
 syntax = "proto3";
 package example;
@@ -30,7 +30,7 @@ message ExampleResponse {
 
 1. Start the server by specifying your import paths, proto file names, and optional port.
 ```sh
-protoxy -I ./protos/ -p example.proto --port 7777
+protoxy -I ./protos/ --port 7777 example.proto
 ```
 
 2. Configure Postman to send requests through the Proxy server.
