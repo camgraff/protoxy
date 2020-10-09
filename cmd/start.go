@@ -14,7 +14,7 @@ var startCmd = &cobra.Command{
 	RunE:  startCmdFunc,
 }
 
-func startCmdFunc(command *cobra.Command, args []string) error {
+func startCmdFunc(command *cobra.Command, protoFiles []string) error {
 	fd, err := protoparser.FileDescriptorsFromPaths(importPaths, protoFiles)
 	if err != nil {
 		return fmt.Errorf("Invalid proto path: %w", err)
