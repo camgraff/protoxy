@@ -1,4 +1,4 @@
-// Pacakge server contains all of the logic for the proxy server.
+// Package server contains all of the logic for the proxy server.
 package server
 
 import (
