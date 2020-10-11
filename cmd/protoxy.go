@@ -1,3 +1,4 @@
+// Package cmd handles the command-line interface for protoxy.
 package cmd
 
 import (

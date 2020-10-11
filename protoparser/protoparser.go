@@ -1,3 +1,4 @@
+// Package protoparser is responsible for parsing .proto files.
 package protoparser
 
 import (
