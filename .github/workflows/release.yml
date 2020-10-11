@@ -1,0 +1,19 @@
+on: 
+  push:
+    branches: 
+      - master
+    tags:
+      - v*
+
+name: Release
+jobs:
+  update-golang-proxy:
+    runs-on: ubuntu-latest
+    steps:
+
+      - name: Get the version
+        id: get_version
+        run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+      
+      - name: Update version on proxy
+        run: curl https://sum.golang.org/lookup/github.com/camgraff/protoxy@${{steps.get_version.outputs.VERSION}}
