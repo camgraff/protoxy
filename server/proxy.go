@@ -32,6 +32,13 @@ type Config struct {
 	Port            uint16
 }
 
+// protoTypes are used to determine the message types used to convert data in the request and response bodies.
+type protoTypes struct {
+	requestMessage   string
+	responseMessages []string
+	queryStringParam string
+}
+
 // New returns a new proxy server instance
 func New(cfg Config) *Server {
 	return &Server{
@@ -40,15 +47,19 @@ func New(cfg Config) *Server {
 	}
 }
 
-func parseMessageTypes(r *http.Request) (srcMsg string, dstMsgs []string, qs string, err error) {
+func parseMessageTypes(r *http.Request) (ptypes protoTypes, err error) {
 	ctype := r.Header.Get("Content-Type")
 	_, params, err := mime.ParseMediaType(ctype)
 	if err != nil {
-		return "", nil, "", err
+		return ptypes, err
 	}
 	// respmsg can contain multiple response types
-	dstMsgs = strings.Split(params["respmsg"], ",")
-	return params["reqmsg"], dstMsgs, params["qs"], nil
+	dstMsgs := strings.Split(params["respmsg"], ",")
+	return protoTypes{
+		requestMessage:   params["reqmsg"],
+		responseMessages: dstMsgs,
+		queryStringParam: params["qs"],
+	}, nil
 }
 
 func writeErrorResponse(w http.ResponseWriter, status int, err error) {
@@ -56,7 +67,7 @@ func writeErrorResponse(w http.ResponseWriter, status int, err error) {
 	w.Write([]byte(err.Error()))
 }
 
-func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor) error {
+func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor, qsParam string) error {
 	msg := dynamic.NewMessage(msgDescriptor)
 	err := jsonpb.Unmarshal(r.Body, msg)
 	if err != nil {
@@ -68,15 +79,10 @@ func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor) err
 		return fmt.Errorf("Unable to marshal message: %v", err)
 	}
 
-	_, _, qs, err := parseMessageTypes(r)
-	if err != nil {
-		return fmt.Errorf("Error parsing content-type: %w", err)
-	}
-
 	// If qs was specified, encode the proto bytes and append to url
-	if qs != "" {
+	if qsParam != "" {
 		b64bytes := base64.URLEncoding.EncodeToString(reqBytes)
-		urlstr := r.URL.String() + "?" + qs + "=" + b64bytes
+		urlstr := r.URL.String() + "?" + qsParam + "=" + b64bytes
 		newurl, err := url.Parse(urlstr)
 		if err != nil {
 			return fmt.Errorf("Error parsing url string: %v", err)
@@ -120,19 +126,19 @@ func (s *Server) findMessageDescriptors(reqMsg string, respMsgs []string) (reqMs
 }
 
 func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
-	reqMsg, respMsgs, _, err := parseMessageTypes(r)
+	msgTypes, err := parseMessageTypes(r)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error parsing content-type: %w", err))
 		return
 	}
 
-	reqMsgDesc, respMsgDescs, err := s.findMessageDescriptors(reqMsg, respMsgs)
+	reqMsgDesc, respMsgDescs, err := s.findMessageDescriptors(msgTypes.requestMessage, msgTypes.responseMessages)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, err)
 		return
 	}
 
-	err = jsonBodyToProto(r, reqMsgDesc)
+	err = jsonBodyToProto(r, reqMsgDesc, msgTypes.queryStringParam)
 	if err != nil {
 		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error converting JSON body to Protobuf: %w", err))
 		return
