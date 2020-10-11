@@ -7,12 +7,13 @@ Protoxy allows you to test your REST APIs that use [Protocol Buffer](https://dev
 
 ## Install
 
-```sh
+```
 go get github.com/camgraff/protoxy
 ```
 
 ## Usage
 Consider a proto file located at `./protos/example.proto` that looks like this:
+
 ```
 syntax = "proto3";
 package example;
@@ -30,7 +31,8 @@ message ExampleResponse {
 ```
 
 1. Start the server by specifying your import paths, proto file names, and optional port.
-```sh
+
+```
 protoxy -I ./protos/ --port 7777 example.proto
 ```
 
@@ -38,11 +40,13 @@ protoxy -I ./protos/ --port 7777 example.proto
 ![Postman proxy config](https://raw.githubusercontent.com/camgraff/protoxy/master/media/postman-config.png)
 
 3. Add your fully-qualified message names as params in the Content-Type header.
+
 ```
 Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="example.ExampleResponse";
 ```
 
 4. Send your request as a raw JSON body.
+
 ```
 {
   "text": "some text",
@@ -52,6 +56,7 @@ Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="
 ```
 
 The response is:
+
 ```
 {
   "text": "this response was automagically converted to JSON"
@@ -61,19 +66,24 @@ The response is:
 ### Using Protobuf in Query String
 
 Protoxy also supports sending protobuf messages as a base64 encoded query string in the URL. To do this, add an additional param `qs` in the header whose value corresponds to the query string parameter. For example:
+
 ```
 Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="example.ExampleResponse"; qs="proto_body";
 ```
+
 This will result in a URL like:
+
 ```
 http://example.com?proto_body={base64 encoding of example.ExampleRequest}
 ```
 
 ### Handling Multiple Response Message Types
 If your API sends multiple response message types, you the `respMsg` parameter accepts a comma-seperated list of values.
+
 ```
 Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="example.ExampleResponse,example.DifferentResponse";
 ```
+
 Note: Protoxy will attempt to unmarshal your proto messages into each type of response and will send the first successful one. This can produce unexpected results because the same wire-format message can successfully be unmarshalled into multiple proto message types depending on the fields in the proto message.
 
 
