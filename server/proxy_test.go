@@ -82,6 +82,9 @@ func TestProxy(t *testing.T) {
 	testProtoBackend := newBackend(t, &testprotos.Req{}, resp, false)
 	defer testProtoBackend.Close()
 
+	emptyRespBackend := newBackend(t, &testprotos.Req{}, &testprotos.Enums{AnEnum: testprotos.Enums_FIRST}, false)
+	defer emptyRespBackend.Close()
+
 	// qsBackend is like testProtoBackend except it reads proto messages from the querystring
 	qsBackend := newBackend(t, &testprotos.Req{}, resp, true)
 	defer qsBackend.Close()
@@ -105,6 +108,25 @@ func TestProxy(t *testing.T) {
 		expectedRespBody   string
 		expectedStatusCode int
 	}{
+		{
+			name:               "Incompatible resp msg types",
+			reqHeader:          `application/x-protobuf; reqmsg=testprotos.Req; respmsg=testprotos.Resp;`,
+			expectedStatusCode: http.StatusBadRequest,
+			backend:            emptyRespBackend,
+			importPaths:        []string{"../internal/testprotos"},
+			protoFiles:         []string{"hello.proto"},
+			reqBody:            `{"text":"some text","number":123,"list":["this","is","a","list"]}`,
+		},
+		{
+			name: "Invalid header params",
+			// Missing semicolon after before params
+			reqHeader:          `application/x-protobuf reqmsg=testprotos.Req; respmsg="testprotos.Resp,testprotos.Resp2";`,
+			expectedStatusCode: http.StatusBadRequest,
+			backend:            testProtoBackend,
+			importPaths:        []string{"../internal/testprotos"},
+			protoFiles:         []string{"hello.proto"},
+			reqBody:            `{"text":"some text","number":123,"list":["this","is","a","list"]}`,
+		},
 		{
 			name:               "multiple response types 1",
 			importPaths:        []string{"../internal/testprotos"},
@@ -193,9 +215,9 @@ func TestProxy(t *testing.T) {
 			importPaths: []string{"../internal/testprotos", "../internal/moreprotos"},
 			protoFiles:  []string{"hello.proto", "moreprotos.proto"},
 			reqBody: `{"subReq":
-					  	{"text":"some text","number":123,"list":["this","is","a","list"]},
-						"num": 22
-					  }`,
+		{"text":"some text","number":123,"list":["this","is","a","list"]},
+		"num": 22
+		}`,
 			expectedRespBody:   `{"text":"This is a response"}`,
 			reqHeader:          `application/x-protobuf; reqmsg=moreprotos.Req; respmsg=testprotos.Resp;`,
 			expectedStatusCode: http.StatusOK,
