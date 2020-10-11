@@ -15,3 +15,12 @@ message Resp {
 message Resp2 {
     int32 number = 1;
 }
+
+message Enums {
+    enum Enums {
+        ZERO = 0;
+        FIRST = 1;
+        SECOND = 2;
+    }
+    Enums anEnum = 1;
+}
