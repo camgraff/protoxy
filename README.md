@@ -78,13 +78,13 @@ http://example.com?proto_body={base64 encoding of example.ExampleRequest}
 ```
 
 ### Handling Multiple Response Message Types
-If your API sends multiple response message types, you the `respMsg` parameter accepts a comma-seperated list of values.
+If your API sends multiple response message types, the `respMsg` parameter accepts a comma-seperated list of values.
 
 ```
 Content-Type: application/x-protobuf; reqMsg="example.ExampleRequest"; respMsg="example.ExampleResponse,example.DifferentResponse";
 ```
 
-Note: Protoxy will attempt to unmarshal your proto messages into each type of response and will send the first successful one. This can produce unexpected results because the same wire-format message can successfully be unmarshalled into multiple proto message types depending on the fields in the proto message.
+Note: Protoxy will attempt to unmarshal your proto messages into each type of response and will send the first successful one. This can produce unexpected results because the same wire-format message can successfully be unmarshalled into multiple proto message types depending on the fields in the proto message. If possible, it is best to ensure that you back-end server returns only one response type per route.
 
 
 ## Author
