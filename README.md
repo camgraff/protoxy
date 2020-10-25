@@ -1,5 +1,6 @@
 # Welcome to Protoxy 👋
 [![codecov](https://codecov.io/gh/camgraff/protoxy/branch/master/graph/badge.svg)](https://codecov.io/gh/camgraff/protoxy)
+[![Go Report Card](https://goreportcard.com/badge/github.com/camgraff/protoxy)](https://goreportcard.com/report/github.com/camgraff/protoxy)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#)
 
 ## What is Protoxy?
