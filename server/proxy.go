@@ -174,7 +174,9 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 			return errs
 		}
 
-		marshaler := jsonpb.Marshaler{}
+		marshaler := jsonpb.Marshaler{
+			EmitDefaults: true,
+		}
 		buf := bytes.NewBuffer(nil)
 		err = marshaler.Marshal(buf, msg)
 		if err != nil {
