@@ -6,8 +6,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"mime"
 	"net/http"
 	"net/http/httputil"
@@ -39,6 +39,8 @@ type protoTypes struct {
 	responseMessages []string
 	queryStringParam string
 }
+
+var log = logrus.New()
 
 // New returns a new proxy server instance
 func New(cfg Config) *Server {
@@ -114,10 +116,10 @@ func (s *Server) findMessageDescriptors(reqMsg string, respMsgs []string) (reqMs
 	}
 
 	var errMsg string
-	if reqMsgDesc == nil {
+	if reqMsg != "" && reqMsgDesc == nil {
 		errMsg += fmt.Sprintf("Failed to find message descriptor for '%v'. ", reqMsg)
 	}
-	if len(respMsgDescs) == 0 {
+	if len(respMsgs) > 0 && len(respMsgDescs) == 0 {
 		errMsg += fmt.Sprintf("Failed to find any message descriptors for '%v'.", respMsgs)
 	}
 	if errMsg != "" {
@@ -139,10 +141,11 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = jsonBodyToProto(r, reqMsgDesc, msgTypes.queryStringParam)
-	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error converting JSON body to Protobuf: %w", err))
-		return
+	if reqMsgDesc != nil {
+		if err = jsonBodyToProto(r, reqMsgDesc, msgTypes.queryStringParam); err != nil {
+			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error converting JSON body to Protobuf: %w", err))
+			return
+		}
 	}
 
 	// Override content-type to remove params
