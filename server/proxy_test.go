@@ -248,4 +248,27 @@ func TestProxy(t *testing.T) {
 		})
 	}
 
+	t.Run("defaults are emitted", func(t *testing.T) {
+		resp := &testprotos.Resp{}
+		backend := newBackend(t, &testprotos.Req{}, resp, false)
+		defer testProtoBackend.Close()
+
+		// Create file descriptors
+		fds, err := protoparser.FileDescriptorsFromPaths([]string{"../internal/testprotos"}, []string{"hello.proto"})
+		require.NoError(t, err)
+
+		// Make the request
+		req := httptest.NewRequest("GET", backend.URL, nil)
+		req.Header.Add("Content-Type", "application/x-protobuf; respMsg=testprotos.Resp")
+		respRecorder := httptest.NewRecorder()
+		srv := New(Config{fds, 7777})
+		srv.proxyRequest(respRecorder, req)
+
+		// Verify response
+		assert.Equal(t, 200, respRecorder.Code)
+		body, err := ioutil.ReadAll(respRecorder.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, `{"text":""}`, string(body))
+	})
+
 }
