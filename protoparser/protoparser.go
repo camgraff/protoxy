@@ -2,6 +2,7 @@
 package protoparser
 
 import (
+	"github.com/camgraff/protoxy/log"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/protoparse"
 )
@@ -14,6 +15,7 @@ func FileDescriptorsFromPaths(importPaths []string, protoFiles []string) ([]*des
 	}
 	descriptors, err := parser.ParseFiles(protoFiles...)
 	if err != nil {
+		log.Log.WithError(err).Error("error parsing proto files")
 		return nil, err
 	}
 	return descriptors, nil
