@@ -21,10 +21,9 @@ var port uint16
 var rootCmd = cobra.Command{
 	Use:   "protoxy PROTO_FILES",
 	Short: "Start the proxy server",
-	Long: `Start a proxy server that converts JSON request bodies 
-to Protocol Buffers. See github.com/camgraff/protoxy for documentation`,
-	Args: cobra.MinimumNArgs(1),
-	RunE: startCmdFunc,
+	Long:  "Start a proxy server that converts JSON request bodies to Protocol Buffers. See github.com/camgraff/protoxy for documentation",
+	Args:  cobra.MinimumNArgs(1),
+	RunE:  startCmdFunc,
 }
 
 // Execute executes the root command.

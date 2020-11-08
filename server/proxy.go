@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"mime"
 	"net/http"
@@ -14,6 +13,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/camgraff/protoxy/log"
 
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
@@ -40,8 +41,6 @@ type protoTypes struct {
 	queryStringParam string
 }
 
-var log = logrus.New()
-
 // New returns a new proxy server instance
 func New(cfg Config) *Server {
 	return &Server{
@@ -65,20 +64,23 @@ func parseMessageTypes(r *http.Request) (ptypes protoTypes, err error) {
 	}, nil
 }
 
-func writeErrorResponse(w http.ResponseWriter, status int, err error) {
+func writeErrorResponse(w http.ResponseWriter, status int) {
 	w.WriteHeader(status)
-	w.Write([]byte(err.Error()))
+	w.Header().Set("Content-Type", "text/plain")
+	w.Write([]byte("Protoxy was unable to successfully proxy the request. See logs for details."))
 }
 
 func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor, qsParam string) error {
 	msg := dynamic.NewMessage(msgDescriptor)
 	err := jsonpb.Unmarshal(r.Body, msg)
 	if err != nil {
+		log.Log.WithError(err).Error("unable to unmarshal into json")
 		return fmt.Errorf("Unable to unmarshal into json: %v", err)
 	}
 
 	reqBytes, err := proto.Marshal(msg)
 	if err != nil {
+		log.Log.WithError(err).Error("unable to marshal message")
 		return fmt.Errorf("Unable to marshal message: %v", err)
 	}
 
@@ -88,6 +90,7 @@ func jsonBodyToProto(r *http.Request, msgDescriptor *desc.MessageDescriptor, qsP
 		urlstr := r.URL.String() + "?" + qsParam + "=" + b64bytes
 		newurl, err := url.Parse(urlstr)
 		if err != nil {
+			log.Log.WithError(err).Error("error parsing url string")
 			return fmt.Errorf("Error parsing url string: %v", err)
 		}
 		r.URL = newurl
@@ -123,6 +126,7 @@ func (s *Server) findMessageDescriptors(reqMsg string, respMsgs []string) (reqMs
 		errMsg += fmt.Sprintf("Failed to find any message descriptors for '%v'.", respMsgs)
 	}
 	if errMsg != "" {
+		log.Log.WithField("err", errMsg).Error("failed to find message descriptors")
 		return nil, nil, errors.New(errMsg)
 	}
 	return reqMsgDesc, respMsgDescs, nil
@@ -131,19 +135,22 @@ func (s *Server) findMessageDescriptors(reqMsg string, respMsgs []string) (reqMs
 func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 	msgTypes, err := parseMessageTypes(r)
 	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error parsing content-type: %w", err))
+		log.Log.WithError(err).Error("error parsing message types")
+		writeErrorResponse(w, http.StatusBadRequest)
 		return
 	}
 
 	reqMsgDesc, respMsgDescs, err := s.findMessageDescriptors(msgTypes.requestMessage, msgTypes.responseMessages)
 	if err != nil {
-		writeErrorResponse(w, http.StatusBadRequest, err)
+		log.Log.WithError(err).Error("error finding message descriptors")
+		writeErrorResponse(w, http.StatusBadRequest)
 		return
 	}
 
 	if reqMsgDesc != nil {
 		if err = jsonBodyToProto(r, reqMsgDesc, msgTypes.queryStringParam); err != nil {
-			writeErrorResponse(w, http.StatusBadRequest, fmt.Errorf("Error converting JSON body to Protobuf: %w", err))
+			log.Log.WithError(err).Error("error converting JSON body to proto")
+			writeErrorResponse(w, http.StatusBadRequest)
 			return
 		}
 	}
@@ -193,8 +200,8 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	errorHandler := func(w http.ResponseWriter, r *http.Request, err error) {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(err.Error()))
+		log.Log.WithError(err).Error("unable to proxy response from server")
+		writeErrorResponse(w, http.StatusBadRequest)
 	}
 
 	proxy := &httputil.ReverseProxy{
@@ -209,5 +216,5 @@ func (s *Server) proxyRequest(w http.ResponseWriter, r *http.Request) {
 // Run starts the proxy server.
 func (s *Server) Run() {
 	http.HandleFunc("/", s.proxyRequest)
-	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(int(s.Port)), nil))
+	log.Log.Fatal(http.ListenAndServe(":"+strconv.Itoa(int(s.Port)), nil))
 }
